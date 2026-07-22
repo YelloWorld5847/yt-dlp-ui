@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>yt-dlp UI</title>
+<style>
+  :root{
+    --bg:#12141A; --card:#1B1E27; --sub:#8B8FA3; --line:#2A2E3B;
+    --accent:#FF3B3B; --accent-hover:#D62F2F; --input:#11131A; --log:#0E1015; --log-text:#B7F5C6;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:#fff;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    padding-bottom:40px;
+  }
+  .wrap{max-width:640px; margin:0 auto; padding:20px 16px;}
+  header{display:flex; align-items:baseline; gap:10px; margin-bottom:18px;}
+  header h1{font-size:26px; margin:0;}
+  header span{color:var(--sub); font-size:13px;}
+  .card{background:var(--card); border-radius:14px; padding:16px; margin-bottom:16px;}
+  .card h2{font-size:12px; letter-spacing:.04em; color:var(--sub); text-transform:uppercase; margin:0 0 10px;}
+  textarea, input[type=text], select{
+    width:100%; background:var(--input); border:1px solid var(--line); border-radius:10px;
+    color:#fff; padding:10px 12px; font-size:14px; font-family:inherit;
+  }
+  textarea{resize:vertical; min-height:90px;}
+  select{appearance:none;}
+  .row{display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;}
+  .row:last-child{margin-bottom:0;}
+  .switch{position:relative; width:44px; height:24px; flex:none;}
+  .switch input{opacity:0; width:0; height:0;}
+  .slider{position:absolute; inset:0; background:var(--line); border-radius:24px; cursor:pointer; transition:.2s;}
+  .slider:before{content:""; position:absolute; width:18px; height:18px; left:3px; top:3px; background:#fff; border-radius:50%; transition:.2s;}
+  input:checked + .slider{background:var(--accent);}
+  input:checked + .slider:before{transform:translateX(20px);}
+  .btn{
+    width:100%; border:none; border-radius:12px; padding:14px; font-size:15px; font-weight:700;
+    background:var(--accent); color:#fff; cursor:pointer;
+  }
+  .btn:hover{background:var(--accent-hover);}
+  .btn:disabled{opacity:.5; cursor:default;}
+  .btn-secondary{background:var(--line); font-weight:600;}
+  .btn-secondary:hover{background:#363B4A;}
+  .progress-outer{flex:1; height:12px; background:var(--line); border-radius:8px; overflow:hidden; margin-right:10px;}
+  .progress-inner{height:100%; width:0%; background:var(--accent); transition:width .2s;}
+  #log{
+    background:var(--log); color:var(--log-text); border:1px solid var(--line); border-radius:10px;
+    padding:12px; font-family:Consolas,monospace; font-size:12px; height:180px; overflow-y:auto; white-space:pre-wrap;
+  }
+  .gear{background:none; border:none; color:var(--sub); font-size:20px; cursor:pointer; margin-left:auto;}
+  #settingsCard{display:none;}
+  .hint{color:var(--sub); font-size:12px; margin-top:6px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>▶ yt-dlp UI</h1>
+    <span>YouTube &amp; 1000+ sites</span>
+    <button class="gear" onclick="toggleSettings()" title="Reglages serveur">⚙</button>
+  </header>
+
+  <div class="card" id="settingsCard">
+    <h2>Serveur backend</h2>
+    <div class="row"><input type="text" id="backendUrl" placeholder="https://ton-backend.onrender.com"></div>
+    <div class="row"><input type="text" id="accessToken" placeholder="Token d'acces (optionnel)"></div>
+    <button class="btn btn-secondary" onclick="saveSettings()">Enregistrer</button>
+    <p class="hint">Renseigne l'URL du backend une fois, il reste enregistre sur cet appareil.</p>
+  </div>
+
+  <div class="card">
+    <h2>Liens — un par ligne (video ou playlist)</h2>
+    <textarea id="urls" placeholder="https://www.youtube.com/watch?v=..."></textarea>
+  </div>
+
+  <div class="card">
+    <h2>Options</h2>
+    <div class="row">
+      <span>Format</span>
+      <select id="format" style="width:auto; max-width:220px;">
+        <option value="video_best">Meilleure qualite (mp4)</option>
+        <option value="video_1080">Video 1080p max</option>
+        <option value="video_720">Video 720p max</option>
+        <option value="audio_mp3">Audio seul (mp3)</option>
+      </select>
+    </div>
+    <div class="row">
+      <span>Toute la playlist</span>
+      <label class="switch"><input type="checkbox" id="playlist"><span class="slider"></span></label>
+    </div>
+    <div class="row">
+      <span>Sous-titres (fr/en)</span>
+      <label class="switch"><input type="checkbox" id="subtitles"><span class="slider"></span></label>
+    </div>
+  </div>
+
+  <button class="btn" id="downloadBtn" onclick="startQueue()">⬇ Telecharger</button>
+
+  <div class="card" style="margin-top:16px;">
+    <div class="row">
+      <div class="progress-outer"><div class="progress-inner" id="progressInner"></div></div>
+      <span id="progressLabel" style="color:var(--sub); width:44px; text-align:right;">0%</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Journal</h2>
+    <div id="log"></div>
+  </div>
+</div>
+
+<script>
+function getBackend(){ return (localStorage.getItem('ytdlpui_backend') || '').replace(/\/+$/,''); }
+function getToken(){ return localStorage.getItem('ytdlpui_token') || ''; }
+
+function toggleSettings(){
+  const c = document.getElementById('settingsCard');
+  c.style.display = c.style.display === 'block' ? 'none' : 'block';
+  document.getElementById('backendUrl').value = getBackend();
+  document.getElementById('accessToken').value = getToken();
+}
+function saveSettings(){
+  localStorage.setItem('ytdlpui_backend', document.getElementById('backendUrl').value.trim());
+  localStorage.setItem('ytdlpui_token', document.getElementById('accessToken').value.trim());
+  log('Reglages enregistres.');
+  toggleSettings();
+}
+
+function log(msg){
+  const el = document.getElementById('log');
+  el.textContent += msg + "\n";
+  el.scrollTop = el.scrollHeight;
+}
+function setProgress(fraction, label){
+  document.getElementById('progressInner').style.width = Math.round(fraction*100) + '%';
+  document.getElementById('progressLabel').textContent = label;
+}
+
+async function apiFetch(path, options={}){
+  const backend = getBackend();
+  if(!backend){ throw new Error("Configure d'abord l'URL du backend (bouton ⚙)."); }
+  const token = getToken();
+  const headers = Object.assign({'Content-Type':'application/json'}, options.headers||{});
+  if(token) headers['X-Access-Token'] = token;
+  const res = await fetch(backend + path, Object.assign({}, options, {headers}));
+  if(!res.ok){
+    let detail = res.statusText;
+    try{ detail = (await res.json()).detail || detail; }catch(e){}
+    throw new Error(detail);
+  }
+  return res;
+}
+
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+async function downloadOne(url, format, playlist, subtitles){
+  const res = await apiFetch('/api/jobs', {
+    method:'POST',
+    body: JSON.stringify({url, format, playlist, subtitles})
+  });
+  const {job_id} = await res.json();
+
+  while(true){
+    await sleep(1000);
+    const statusRes = await apiFetch(`/api/jobs/${job_id}`);
+    const job = await statusRes.json();
+    setProgress(job.progress || 0, Math.round((job.progress||0)*100) + '%');
+    if(job.status === 'ready'){
+      log(`Pret : ${job.filename}`);
+      const fileUrl = getBackend() + `/api/jobs/${job_id}/file`;
+      const a = document.createElement('a');
+      const token = getToken();
+      if(token){
+        const fileRes = await fetch(fileUrl, {headers:{'X-Access-Token':token}});
+        const blob = await fileRes.blob();
+        a.href = URL.createObjectURL(blob);
+      } else {
+        a.href = fileUrl;
+      }
+      a.download = job.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      return;
+    }
+    if(job.status === 'error'){
+      throw new Error(job.message || 'Erreur inconnue');
+    }
+    log(job.message || '...');
+  }
+}
+
+async function startQueue(){
+  const raw = document.getElementById('urls').value.trim();
+  const urls = raw.split('\n').map(s => s.trim()).filter(Boolean);
+  if(urls.length === 0){ alert('Colle au moins un lien.'); return; }
+
+  const format = document.getElementById('format').value;
+  const playlist = document.getElementById('playlist').checked;
+  const subtitles = document.getElementById('subtitles').checked;
+  const btn = document.getElementById('downloadBtn');
+
+  btn.disabled = true;
+  btn.textContent = 'Telechargement...';
+  setProgress(0, '0%');
+  log(`File d'attente : ${urls.length} lien(s)`);
+
+  for(let i=0; i<urls.length; i++){
+    log(`[${i+1}/${urls.length}] Demarrage : ${urls[i]}`);
+    setProgress(0, '0%');
+    try{
+      await downloadOne(urls[i], format, playlist, subtitles);
+    }catch(e){
+      log(`Erreur sur ${urls[i]} : ${e.message}`);
+    }
+  }
+
+  log(`File d'attente terminee (${urls.length} lien(s)).`);
+  btn.disabled = false;
+  btn.textContent = '⬇ Telecharger';
+}
+
+if(!getBackend()){ toggleSettings(); }
+</script>
+</body>
+</html>
