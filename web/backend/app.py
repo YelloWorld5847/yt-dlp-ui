@@ -95,7 +95,7 @@ def _run_job(job_id, req: JobRequest):
         "quiet": True,
         "no_warnings": True,
         "format": chosen["format"],
-        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+        "extractor_args": {"youtube": {"player_client": ["tv", "ios", "android"]}},
     }
     if "postprocessors" in chosen:
         ydl_opts["postprocessors"] = chosen["postprocessors"]
